@@ -1,0 +1,215 @@
+#include <Servo.h>
+ 
+int val = 0; //Variable de entrada del Serial
+int mode = 0; //mode 0: escuchar, mode 1: mover
+int max_servo = 170;
+int med_servo = 85;
+int min_servo = 10;
+int counter = 0;
+String cadena = "" ;
+String medida_pot = "";
+int potenciometro_0 = A4;
+float resolution = 20; // Resolución, en ms
+float medida = 0;
+float minim = 0;
+float medium_0 = 0;
+float medium_1 = 0;
+float maxim = 0;
+bool direct = true;
+float scale_0 = 0;
+float scale_1 = 0;
+float servo_pos = 0;
+float target = med_servo;
+float dist = 0;
+float vel = 0;
+float vel_max = 2;
+float topspeed = 0;
+float acc = 0.005;
+
+// FUNCIONES: -------
+
+float scale (float medida, float minim, float medium_0, float medium_1, float maxim, bool direct)
+{
+  float medium = 0;
+  if (direct)
+  {
+    medium = medium_1;
+  }
+  else
+  {
+    medium = medium_0;
+  }
+  scale_0 = (med_servo - min_servo) / (medium - minim);
+  scale_1 = (max_servo - med_servo) / (maxim - medium);
+  
+  if (medida > medium)
+  {
+    return (med_servo + (medida - medium)*scale_1);
+  }
+  else
+  {
+    return (min_servo + (medida - minim)*scale_0);
+  }
+}
+
+float set_speed(float medida, float target, float vel, float vel_max, float acc, float topspeed)
+{    
+  float sign = 0;
+  float target_speed = 0;
+  float dist = 0;
+  float max_dist = 0;
+  float delta_v = 0;
+  
+  max_dist =  0.51 * topspeed * topspeed / acc;
+  dist = target - medida;
+  if (abs(dist) > 0.001)
+  {
+    sign = (dist)/(abs(dist));
+  }
+  else
+  {
+    sign = 1;
+  }
+  if (abs(dist) > max_dist)
+  {
+    target_speed = vel_max * sign;
+  }
+  else
+  {
+    target_speed = dist * topspeed / max_dist;
+  }
+  if (abs(target-medida)< 0.2)
+  {
+    target_speed = 0;
+  }
+  delta_v = target_speed - vel ; 
+  if (delta_v == 0)
+  {
+    return vel;
+  }
+  sign = delta_v / (abs(delta_v));
+  if (abs(delta_v) > acc)
+  {
+    vel = vel + acc * sign;
+    delta_v = acc * sign;
+  }
+  else
+  {
+    vel = vel + delta_v;
+  }
+  return vel;
+} 
+Servo servo; //Creamos un objeto Servo de nombre... servo
+// INICIANDO ---------------------------------------- INICIANDO 
+void setup()
+{
+   //Ajustar valores respecto  a la resolución:
+   vel_max = vel_max * resolution / 10;
+   acc = acc * resolution / 10;
+   servo.attach(3); //Conectamos el servo al pin digital 3
+   servo.write(min_servo);
+   delay(2000);
+   minim = analogRead(potenciometro_0);
+   servo.write(med_servo);
+   delay(2000);
+   medium_0 = analogRead(potenciometro_0);
+   servo.write(max_servo);
+   delay(2000);
+   maxim = analogRead(potenciometro_0);   
+   servo.write(med_servo);
+   delay(2000);
+   medium_1 = analogRead(potenciometro_0);
+   servo_pos = med_servo;
+   mode = 0;
+
+   Serial.begin(9600); //Iniciamos el serial
+}
+//  BUCLE PRINCIPAL ------------------------------------- BUCLE PRINCIPAL 
+void loop()
+{
+  medida = analogRead(potenciometro_0);
+  medida = scale( medida, minim, medium_0, medium_1, maxim, direct);
+  if (mode == 0) //------------------------------------------------------mode escucha
+  {
+    medida_pot = String("Medida: ");
+    medida_pot = medida_pot + medida;
+    Serial.println(medida_pot);
+    if(Serial.available() > 0) //Detecta si hay alguna entrada por serial
+    {
+      val = Serial.parseInt();
+      if (val > max_servo)
+      {
+        val = max_servo;
+      }
+      if (val < min_servo)
+      {
+        val = min_servo;
+      }
+      cadena = String("moviendo a ");
+      cadena = cadena + val; 
+      Serial.println(cadena);
+      if (val > servo_pos)
+      {
+        direct = false;
+      }
+      else if (val < servo_pos)
+      {
+        direct = true;
+      }
+      mode = 1;
+      target = val;
+      topspeed = 0;
+      //servo_pos = val;
+      //servo.write(val); //Mueve el servo a la posición entrada (excepto si es 0)
+    }
+    else
+    {
+      Serial.println("esperando");
+    }
+  }
+  else if (mode == 1)// ----------------------------------------------------- mode movimiento 
+  {
+    vel =  set_speed(medida, target, vel, vel_max, acc, topspeed);
+    if (abs(vel)>topspeed)
+    {
+      topspeed = abs(vel);
+    }
+    servo_pos = servo_pos + vel;
+    servo.write(servo_pos);
+    dist = target - medida;
+    dist = abs(dist);
+    if ((abs(vel)< 0.01) and (dist < 0.2))
+    {
+      mode = 0;
+    }
+    counter = counter + 1;
+    if (counter == 20)
+    {
+      cadena = String("moviendo a ");
+      cadena = cadena + target;
+      cadena = cadena + " posicion: ";
+      cadena = cadena + medida;
+      cadena = cadena + " velocidad: ";
+      cadena = cadena + vel;
+      Serial.println(cadena);
+      counter = 0;
+    }
+  }
+  // ---------------------------------------------------------Tiempos de espera para el siguiente loop
+  
+  if (mode == 0)
+  {
+  Serial.println("mode escucha");
+  delay(500);
+  }
+  else if (mode == 1)
+  {
+  //Serial.println("mode movimiento");
+  delay(resolution);
+  }
+  else
+  {
+  Serial.println("Atención mode no reconocido");
+  delay(1000);
+  }
+}
