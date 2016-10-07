@@ -1,4 +1,6 @@
 ﻿
+ 
+<img src="./static/pycones2016.jpg" alt="PyConEs" align="center" style="width: 150px;"/>
 
 ## VIERNES 7/OCT/2016
 
